@@ -88,7 +88,7 @@ public class Main {
     public static void main(String[] args) {
         //Initialise Conductor Client
         var apiClient = new ApiClient(
-                "https://haven-development.orkesconductor.io/api",
+                System.getenv("CONDUCTOR_SERVER_URL"),
                 System.getenv("CONDUCTOR_ACCESS_KEY_ID"),
                 System.getenv("CONDUCTOR_ACCESS_KEY_SECRET")
         );
