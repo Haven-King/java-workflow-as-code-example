@@ -6,9 +6,11 @@ import com.netflix.conductor.sdk.workflow.def.ConductorWorkflow;
 import com.netflix.conductor.sdk.workflow.def.WorkflowBuilder;
 import com.netflix.conductor.sdk.workflow.def.tasks.*;
 import com.netflix.conductor.sdk.workflow.executor.WorkflowExecutor;
+import com.netflix.conductor.sdk.workflow.task.WorkerTask;
 import io.orkes.conductor.client.ApiClient;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 
 public class Main {
@@ -102,10 +104,19 @@ public class Main {
     private static ConductorWorkflow<Object> createExampleWorkflow(WorkflowExecutor executor) {
         var builder = new WorkflowBuilder<>(executor);
 
+        var simpleTask = new SimpleTask("QueryDatabase", "queryDatabase");
+
+        var query = new ExampleWorkers.DatabaseQuery();
+
+        query.query = "abc";
+
+        simpleTask.input("query", query);
+
         return builder
                 .name("example_workflow")
                 .description("An example workflow that runs several tasks")
                 .add(
+                        simpleTask,
                         createForkGenerationTask(),
                         createDynamicFork(),
                         new Join("joinForks"),
@@ -119,10 +130,18 @@ public class Main {
                                 new Task[] {
                                         createLoop()
                                 }
-                        )
+                        ).joinOn("loop", "delay")
                 )
                 .version(1).build();
     }
+
+//    private static void thing(WorkflowExecutor executor) {
+//        var builder = new WorkflowBuilder<>(executor);
+//
+//        var caseLabel = "TRUE";
+//
+//        builder.add(new Switch())
+//    }
 
     private static void registerWorkflow(WorkflowExecutor executor, ConductorWorkflow<?>... workflows) {
         for (var workflow : workflows) {
@@ -137,7 +156,7 @@ public class Main {
     private static <T> void executeWorkflow(ConductorWorkflow<T> workflow, T input) {
         System.out.println("Executing workflow: " + workflow.getName());
 
-        workflow.execute(input).join();
+        workflow.execute(input)/*.join()*/;
 
         System.out.println("Workflow executed successfully: " + workflow.getName());
     }
@@ -163,6 +182,6 @@ public class Main {
 
         executeWorkflow(exampleWorkflow);
 
-        executor.shutdown();
+        executor.initWorkersFromInstances(List.of(new ExampleWorkers()));
     }
 }
