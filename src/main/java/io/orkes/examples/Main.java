@@ -1,6 +1,8 @@
 package io.orkes.examples;
 
 import com.netflix.conductor.common.metadata.tasks.TaskType;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.sdk.workflow.def.ConductorWorkflow;
 import com.netflix.conductor.sdk.workflow.def.WorkflowBuilder;
 import com.netflix.conductor.sdk.workflow.def.tasks.*;
 import com.netflix.conductor.sdk.workflow.executor.WorkflowExecutor;
@@ -85,6 +87,65 @@ public class Main {
         return task;
     }
 
+    private static ConductorWorkflow<?> createSimpleHTTPWorkflow(WorkflowExecutor executor) {
+        var builder = new WorkflowBuilder<>(executor);
+
+        return builder
+                .name("SimpleHTTPWorkflow")
+                .description("An example workflow that runs a single HTTP task")
+                .add(
+                        createDummyHTTPTask()
+                )
+                .version(1).build();
+    }
+
+    private static ConductorWorkflow<Object> createExampleWorkflow(WorkflowExecutor executor) {
+        var builder = new WorkflowBuilder<>(executor);
+
+        return builder
+                .name("example_workflow")
+                .description("An example workflow that runs several tasks")
+                .add(
+                        createForkGenerationTask(),
+                        createDynamicFork(),
+                        new Join("joinForks"),
+                        new ForkJoin("forks",
+                                new Task[] {
+                                        createTwoBranchSwitch(),
+                                },
+                                new Task[] {
+                                        createWaitFiveSeconds()
+                                },
+                                new Task[] {
+                                        createLoop()
+                                }
+                        )
+                )
+                .version(1).build();
+    }
+
+    private static void registerWorkflow(WorkflowExecutor executor, ConductorWorkflow<?>... workflows) {
+        for (var workflow : workflows) {
+            if (executor.registerWorkflow(workflow.toWorkflowDef(), true)) {
+                System.out.println("Workflow registered successfully: " + workflow.getName());
+            } else {
+                System.out.println("Failed to register workflow: " + workflow.getName());
+            }
+        }
+    }
+
+    private static <T> void executeWorkflow(ConductorWorkflow<T> workflow, T input) {
+        System.out.println("Executing workflow: " + workflow.getName());
+
+        workflow.execute(input).join();
+
+        System.out.println("Workflow executed successfully: " + workflow.getName());
+    }
+
+    private static void executeWorkflow(ConductorWorkflow<?> workflow) {
+        executeWorkflow(workflow, null);
+    }
+
     public static void main(String[] args) {
         //Initialise Conductor Client
         var apiClient = new ApiClient(
@@ -94,34 +155,13 @@ public class Main {
         );
 
         var executor = new WorkflowExecutor(apiClient, 10);
-        var builder = new WorkflowBuilder<>(executor);
 
-        var workflow = builder
-            .name("example_workflow")
-            .description("An example workflow that runs a simple task")
-            .add(
-                    createForkGenerationTask(),
-                    createDynamicFork(),
-                    new Join("joinForks"),
-                    new ForkJoin("forks",
-                            new Task[] {
-                                    createTwoBranchSwitch(),
-                            },
-                            new Task[] {
-                                    createWaitFiveSeconds()
-                            },
-                            new Task[] {
-                                createLoop()
-                            }
-                    )
-            )
-            .version(1).build();
+        var subWorkflow = createSimpleHTTPWorkflow(executor);
+        var exampleWorkflow = createExampleWorkflow(executor);
 
-        if (executor.registerWorkflow(workflow.toWorkflowDef(), true)) {
-            System.out.println("Workflow registered successfully: " + workflow.getName());
-        } else {
-            System.out.println("Failed to register workflow: " + workflow.getName());
-        }
+        registerWorkflow(executor, subWorkflow, exampleWorkflow);
+
+        executeWorkflow(exampleWorkflow);
 
         executor.shutdown();
     }
